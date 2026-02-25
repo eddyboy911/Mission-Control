@@ -1,4 +1,4 @@
-import clientPromise from '../../../lib/mongodb.js';
+import clientPromise from '../../lib/mongodb.js';
 import { ObjectId } from 'mongodb';
 
 export default async function handler(req, res) {
