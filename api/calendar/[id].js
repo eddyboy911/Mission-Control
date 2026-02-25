@@ -1,0 +1,31 @@
+import clientPromise from '../../../lib/mongodb.js';
+import { ObjectId } from 'mongodb';
+
+export default async function handler(req, res) {
+    const { id } = req.query;
+    const client = await clientPromise;
+    const db = client.db('missioncontrol');
+    const collection = db.collection('calendar');
+
+    let objectId;
+    try {
+        objectId = new ObjectId(id);
+    } catch (e) {
+        return res.status(400).json({ ok: false, error: 'Invalid Calendar Entry ID format' });
+    }
+
+    if (req.method === 'DELETE') {
+        try {
+            const result = await collection.deleteOne({ _id: objectId });
+            if (result.deletedCount === 0) {
+                return res.status(404).json({ ok: false, error: 'Calendar entry not found' });
+            }
+            return res.status(200).json({ ok: true, deleted: id });
+        } catch (e) {
+            return res.status(500).json({ ok: false, error: e.message });
+        }
+    }
+
+    res.setHeader('Allow', ['DELETE']);
+    return res.status(405).end(`Method ${req.method} Not Allowed`);
+}

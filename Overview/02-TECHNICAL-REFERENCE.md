@@ -1,8 +1,8 @@
 # Mission Control — Technical Reference
 
-**Version:** 2.0  
-**Base URL (local):** `http://localhost:10000`  
-**Base URL (Render):** your Render service URL
+**Version:** 2.2  
+**Base URL (local):** `http://localhost:3000` (via `npx vercel dev`)  
+**Base URL (production):** your Vercel deployment URL  
 
 ---
 
@@ -10,89 +10,63 @@
 
 ```
 mission-control/
-├── server.js                        ← Entry point. Run this.
-├── package.json                     ← Node 20, no dependencies
+├── vercel.json                      ← Vercel routing config
+├── package.json                     ← Node 20, mongodb driver
+├── .env                             ← MONGODB_URI (local only, never commit)
 │
-├── server/
-│   ├── utils.js                     ← uid() generator
-│   ├── routes/
-│   │   └── index.js                 ← Route matching (method + path → handler)
-│   ├── controllers/
-│   │   ├── tasks.js                 ← Task CRUD logic
-│   │   ├── calendar.js              ← Calendar CRUD logic
-│   │   └── agents.js                ← AI push + feed logic
-│   └── data/
-│       ├── store.js                 ← All disk reads/writes go through here
-│       ├── tasks.json               ← Auto-created on first run
-│       ├── calendar.json            ← Auto-created on first run
-│       └── agents.json              ← Auto-created on first run
+├── lib/
+│   └── mongodb.js                   ← Cached MongoClient connection (global)
+│
+├── api/                             ← Vercel Serverless Functions
+│   ├── status.js                    ← GET /api/status
+│   ├── tasks/
+│   │   ├── index.js                 ← GET + POST /api/tasks
+│   │   └── [id].js                  ← PATCH + DELETE /api/tasks/:id
+│   ├── calendar/
+│   │   ├── index.js                 ← GET + POST /api/calendar
+│   │   └── [id].js                  ← DELETE /api/calendar/:id
+│   ├── agents/
+│   │   ├── index.js                 ← GET + POST /api/agents (Agent Registry)
+│   │   └── [id].js                  ← PATCH + DELETE /api/agents/:id
+│   ├── agent-update.js              ← POST /api/agent-update
+│   └── agent-updates.js             ← GET /api/agent-updates
 │
 └── client/
-    └── index.html                   ← Full dashboard (HTML + CSS + JS, single file)
+    └── index.html                   ← Full dashboard UI (HTML + CSS + JS)
 ```
 
 ---
 
-## Server Entry Point — `server.js`
+## MongoDB Collections
 
-**Port binding:**
-```javascript
-const PORT = process.env.PORT || 10000;
-server.listen(PORT, '0.0.0.0');
-```
+| Collection    | Purpose                                           |
+|---------------|---------------------------------------------------|
+| `tasks`       | All Kanban task documents                        |
+| `calendar`    | All calendar/goal entries                        |
+| `agents`      | **Agent Registry** — registered agent profiles  |
+| `agent_logs`  | Activity log from `POST /api/agent-update` calls |
 
-Render injects `process.env.PORT` at runtime. Locally it defaults to `10000`.
+**Connection:** Managed by `lib/mongodb.js` using a global cached `MongoClient` promise — prevents connection pool exhaustion in serverless environments.
 
-**What it does:**
-- Handles CORS preflight (`OPTIONS`) for all routes
-- Parses JSON body for `POST`, `PATCH`, `PUT` methods
-- Delegates all `/api/*` routes to the route matcher
-- Serves `client/index.html` for `/`, `/index`, `/dashboard`
-- Serves other static files from `client/` with path traversal protection
-- Logs every request with method, path, status code, and timestamp
-- Handles `SIGINT` / `SIGTERM` for graceful shutdown
-
-**Production URL detection:**
-```javascript
-const base = process.env.RENDER_EXTERNAL_URL || `http://localhost:${PORT}`;
-```
-Startup logs use the real public URL on Render instead of localhost.
+**ID format:** MongoDB ObjectId (24-char hex string). All API responses map `_id` → `id` automatically.
 
 ---
 
-## Route Matching — `server/routes/index.js`
+## Environment Variables
 
-A minimal custom router — no Express, no dependencies.
+| Variable        | Required | Description                                               |
+|-----------------|----------|-----------------------------------------------------------|
+| `MONGODB_URI`   | ✅ Yes   | Full MongoDB Atlas connection string                     |
+| `AGENT_API_KEY` | Optional | If set, `POST /api/agent-update` requires `Authorization: Bearer <key>` |
 
-Supports `:param` segments in patterns. Example:
-
-```
-PATCH /api/tasks/task_123_abc
-→ matches pattern /api/tasks/:id
-→ req.params = { id: "task_123_abc" }
-```
-
-Full route table:
-
-| Method | Path | Handler |
-|--------|------|---------|
-| GET | /api/status | Status handler (inline) |
-| GET | /api/tasks | tasks.getTasks |
-| POST | /api/tasks | tasks.createTask |
-| PATCH | /api/tasks/:id | tasks.updateTask |
-| DELETE | /api/tasks/:id | tasks.deleteTask |
-| GET | /api/calendar | calendar.getCalendar |
-| POST | /api/calendar | calendar.createCalendarEntry |
-| DELETE | /api/calendar/:id | calendar.deleteCalendarEntry |
-| POST | /api/agent-update | agents.agentUpdate |
-| GET | /api/agent-updates | agents.getAgentUpdates |
+**Local:** Store in `.env` (which is gitignored).  
+**Production:** Set in Vercel Dashboard → Project → Settings → Environment Variables.
 
 ---
 
 ## API Reference
 
-All endpoints return JSON. All write operations accept `Content-Type: application/json`.  
-CORS is fully open (`Access-Control-Allow-Origin: *`).
+All endpoints return JSON. All write operations accept `Content-Type: application/json`.
 
 ---
 
@@ -104,13 +78,7 @@ Health check.
 
 **Response:**
 ```json
-{
-  "ok": true,
-  "status": "online",
-  "uptime": "2h 15m 30s",
-  "version": "2.0.0",
-  "node": "v20.x.x"
-}
+{ "ok": true, "status": "online", "version": "2.2.0" }
 ```
 
 ---
@@ -127,15 +95,15 @@ Returns all tasks.
   "ok": true,
   "tasks": [
     {
-      "id": "task_1771850516465_n61i1",
+      "id": "65f1a2b3c4d5e6f7a8b9c0d1",
       "title": "Follow up with client",
       "description": "Send the proposal PDF",
       "column": "todo",
       "priority": "high",
       "dueDate": "2026-03-01",
-      "assignee": "Danny",
-      "createdAt": "2026-02-23T12:00:00.000Z",
-      "updatedAt": "2026-02-23T12:00:00.000Z",
+      "assignee": "SPARC",
+      "createdAt": "2026-02-25T14:30:00.000Z",
+      "updatedAt": "2026-02-25T14:30:00.000Z",
       "source": null
     }
   ]
@@ -160,70 +128,32 @@ Create a task.
   "column":      "todo",
   "priority":    "high",
   "dueDate":     "2026-03-01",
-  "assignee":    "Danny"
+  "assignee":    "open-claw"
 }
 ```
 
-**Required:** `title`  
-**Defaults:** `column` → `todo`, `priority` → `medium`  
-**Limits:** title max 200 chars, description max 1000 chars
+**Required:** `title` · **Defaults:** `column` → `todo`, `priority` → `medium`
 
-**Response:** `201`
-```json
-{
-  "ok": true,
-  "task": { ...full task object }
-}
-```
+**Response:** `201` `{ "ok": true, "task": { ...full task } }`
 
 ---
 
 #### `PATCH /api/tasks/:id`
 
-Update any fields on a task. Send only what you want to change.
+Update any task fields. Send only what changes.
 
-**Request body (any subset):**
-```json
-{
-  "title":       "Updated title",
-  "description": "New description",
-  "column":      "inprogress",
-  "priority":    "medium",
-  "dueDate":     "2026-03-15",
-  "assignee":    "Team"
-}
-```
-
-**Common use case — move to done:**
 ```json
 { "column": "done" }
+{ "priority": "high", "assignee": "SPARC" }
 ```
 
-**Response:** `200`
-```json
-{
-  "ok": true,
-  "task": { ...updated task object }
-}
-```
-
-**Error — not found:** `404`
+**Response:** `200` `{ "ok": true, "task": { ...updated task } }`
 
 ---
 
 #### `DELETE /api/tasks/:id`
 
-Delete a task permanently.
-
-**Response:** `200`
-```json
-{
-  "ok": true,
-  "deleted": "task_1771850516465_n61i1"
-}
-```
-
-**Error — not found:** `404`
+**Response:** `200` `{ "ok": true, "deleted": "<id>" }`
 
 ---
 
@@ -231,22 +161,19 @@ Delete a task permanently.
 
 #### `GET /api/calendar`
 
-Returns all calendar entries.
-
 **Response:**
 ```json
 {
   "ok": true,
   "entries": [
     {
-      "id": "cal_1771850516493_xkisq",
+      "id": "65f1a2b3c4d5e6f7a8b9c0d2",
       "date": "2026-03-01",
       "title": "Launch campaign",
       "description": "Phase 1 goes live",
       "type": "milestone",
-      "taskId": null,
       "source": null,
-      "createdAt": "2026-02-23T12:00:00.000Z"
+      "createdAt": "2026-02-25T14:30:00.000Z"
     }
   ]
 }
@@ -258,177 +185,151 @@ Returns all calendar entries.
 
 #### `POST /api/calendar`
 
-Add a single entry or an array of entries (bulk import).
+Add a single entry or an array (bulk import).
 
-**Single entry:**
-```json
-{
-  "date":        "2026-03-01",
-  "title":       "Launch campaign",
-  "description": "Optional",
-  "type":        "milestone"
-}
-```
-
-**Array (AI 30-day plan import):**
 ```json
 [
-  { "date": "2026-03-01", "title": "Week 1 goal",    "type": "goal"      },
-  { "date": "2026-03-07", "title": "Mid-check",      "type": "reminder"  },
-  { "date": "2026-03-15", "title": "Phase 2 launch", "type": "milestone" },
-  { "date": "2026-03-31", "title": "Month review",   "type": "goal"      }
+  { "date": "2026-03-01", "title": "Launch", "type": "milestone" },
+  { "date": "2026-03-07", "title": "Review", "type": "goal" }
 ]
 ```
 
-**Required per entry:** `date` (YYYY-MM-DD), `title`
-
-**Response:** `201`
-```json
-{
-  "ok": true,
-  "created": 4,
-  "entries": [ ...array of created entries ]
-}
-```
+**Required per entry:** `date` (YYYY-MM-DD), `title`  
+**Response:** `201` `{ "ok": true, "created": 2, "entries": [...] }`
 
 ---
 
 #### `DELETE /api/calendar/:id`
 
-Delete a calendar entry.
+**Response:** `200` `{ "ok": true, "deleted": "<id>" }`
 
-**Response:** `200`
+---
+
+### Agent Registry
+
+The Agent Registry stores persistent agent profiles. Agents can self-register on startup — the endpoint is **idempotent** (calling it twice with the same name just updates `lastSeen`).
+
+#### `GET /api/agents`
+
+Returns all registered agents.
+
+**Response:**
 ```json
 {
   "ok": true,
-  "deleted": "cal_1771850516493_xkisq"
+  "agents": [
+    {
+      "id": "65f1a2b3c4d5e6f7a8b9c0d3",
+      "name": "SPARC",
+      "role": "orchestrator",
+      "description": "Top-level orchestrator. Delegates work to sub-agents.",
+      "status": "active",
+      "createdAt": "2026-02-25T14:30:00.000Z",
+      "lastSeen": "2026-02-25T14:30:00.000Z"
+    }
+  ]
 }
+```
+
+**Role values:** `orchestrator` · `primary` · `sub-agent`
+
+---
+
+#### `POST /api/agents`
+
+Register an agent (or update `lastSeen` if already exists).
+
+```json
+{
+  "name":        "SPARC",
+  "role":        "orchestrator",
+  "description": "Top-level orchestrator. Manages all sub-agents."
+}
+```
+
+**Required:** `name`  
+**Response:** `201` (new) or `200` (already existed) with `{ "ok": true, "agent": {...}, "alreadyExists": true/false }`
+
+**Agent self-registration on startup:**
+```bash
+curl -X POST https://your-vercel-url.vercel.app/api/agents \
+  -H "Content-Type: application/json" \
+  -d '{ "name": "open-claw", "role": "primary", "description": "Primary execution agent" }'
 ```
 
 ---
 
-### AI Agent Endpoints
+#### `PATCH /api/agents/:id`
+
+Update agent description, status, or lastSeen.
+
+```json
+{ "description": "Updated role description", "status": "idle" }
+```
+
+**Response:** `200` `{ "ok": true, "agent": { ...updated } }`
+
+---
+
+#### `DELETE /api/agents/:id`
+
+Remove an agent from the registry (does not delete their tasks).
+
+**Response:** `200` `{ "ok": true, "deleted": "<id>" }`
+
+---
+
+### AI Agent Activity Log
 
 #### `POST /api/agent-update`
 
-The main AI integration endpoint. Push any combination of: a message, tasks to create, calendar entries to add.
+Push an update from an AI agent. Creates tasks and/or calendar entries atomically.
 
 **Request body:**
 ```json
 {
   "message":  "Completed weekly analysis and created action items",
-  "source":   "strategy-agent",
+  "source":   "SPARC",
   "tasks": [
     {
-      "title":       "Call top 3 prospects",
-      "description": "Re-engage dormant leads from Q4",
-      "column":      "todo",
-      "priority":    "high",
-      "dueDate":     "2026-03-05",
-      "assignee":    "Danny"
+      "title":    "Call top 3 prospects",
+      "column":   "todo",
+      "priority": "high",
+      "dueDate":  "2026-03-05",
+      "assignee": "open-claw"
     }
   ],
   "calendar": [
-    {
-      "date":  "2026-03-05",
-      "title": "Prospect follow-up deadline",
-      "type":  "reminder"
-    }
+    { "date": "2026-03-05", "title": "Prospect deadline", "type": "reminder" }
   ],
-  "data": {
-    "any": "extra data you want stored with this log entry"
-  }
+  "data": { "any": "extra data" }
 }
 ```
 
-**All fields are optional.** You must include at least one of `message`, `tasks`, or `calendar`.
+All fields optional. Must include at least one of `message`, `tasks`, `calendar`, or `data`.
 
 **Response:** `201`
 ```json
 {
   "ok": true,
   "entry": {
-    "id":        "agt_1771850516492_yasqm",
-    "source":    "strategy-agent",
-    "message":   "Completed weekly analysis and created action items",
-    "data":      null,
-    "createdAt": "2026-02-23T12:00:00.000Z",
-    "results": {
-      "tasksCreated":    1,
-      "calendarCreated": 1
-    }
+    "id": "65f...",
+    "source": "SPARC",
+    "message": "...",
+    "results": { "tasksCreated": 1, "calendarCreated": 1 },
+    "createdAt": "2026-02-25T14:30:00.000Z"
   }
 }
 ```
-
-The `results` object tells you exactly what was created so the agent can confirm receipt.
 
 ---
 
 #### `GET /api/agent-updates`
 
-Returns the agent activity feed. The dashboard polls this every 10 seconds.
+Returns the agent activity log. Dashboard polls every 10 seconds.
 
-**Query params:**
-- `limit` — number of entries to return (default: 30, max: 100)
-
-**Example:**
-```
-GET /api/agent-updates?limit=20
-```
-
-**Response:**
-```json
-{
-  "ok": true,
-  "entries": [
-    {
-      "id":        "agt_...",
-      "source":    "strategy-agent",
-      "message":   "...",
-      "data":      null,
-      "createdAt": "2026-02-23T12:00:00.000Z",
-      "results":   { "tasksCreated": 2 }
-    }
-  ],
-  "total": 14
-}
-```
-
-Entries are ordered newest first. The log keeps the last 200 entries.
-
----
-
-## Data Layer — `server/data/store.js`
-
-All disk access is isolated in this single file. Every controller imports `store` and uses these methods:
-
-```javascript
-store.getTasks()          // → array
-store.saveTasks(array)    // → void
-
-store.getCalendar()       // → array
-store.saveCalendar(array) // → void
-
-store.getAgents()         // → array
-store.saveAgents(array)   // → void
-```
-
-**To swap to a database:** replace `store.js` with any adapter that implements the same 6 methods. No other file needs to change.
-
----
-
-## ID Format
-
-All IDs are generated by `server/utils.js`:
-
-```javascript
-uid('task')  // → "task_1771850516465_n61i1"
-uid('cal')   // → "cal_1771850516493_xkisq"
-uid('agt')   // → "agt_1771850516492_yasqm"
-```
-
-Format: `{prefix}_{timestamp}_{5-char random}` — unique, sortable, human-readable.
+**Query params:** `limit` (default 50)  
+**Response:** `{ "ok": true, "entries": [...], "total": 14 }` — newest first, max 200 kept.
 
 ---
 
@@ -438,11 +339,13 @@ Single-file application. No build step, no framework, no bundler.
 
 **State variables:**
 ```javascript
-let tasks        = [];   // all tasks from API
-let calEntries   = [];   // all calendar entries from API
-let agentEntries = [];   // agent feed entries from API
-let calViewDate  = new Date(); // which month the calendar is showing
-let draggingId   = null; // ID of the card currently being dragged
+let tasks         = [];   // all tasks from API
+let calEntries    = [];   // all calendar entries from API
+let agentEntries  = [];   // agent activity log entries
+let agentRegistry = [];   // registered agent profiles
+let calViewDate   = new Date();
+let draggingId    = null;
+let editingTaskId = null;
 ```
 
 **Key functions:**
@@ -453,36 +356,42 @@ let draggingId   = null; // ID of the card currently being dragged
 | `loadTasks()` | Fetches `/api/tasks`, calls `renderKanban()` |
 | `renderKanban()` | Rebuilds all 4 columns from the `tasks` array |
 | `buildTaskCard(task)` | Creates a draggable card DOM element |
+| `openTaskDetail(id)` | Opens the Task Detail drawer for editing |
+| `saveTaskEdit()` | Sends PATCH request, updates local state |
 | `onDrop(e, col)` | Handles drop — updates local state, calls PATCH |
-| `loadCalendar()` | Fetches `/api/calendar`, calls `renderCalendar()` |
-| `renderCalendar()` | Builds the month grid from `calEntries` |
-| `buildCalCell(date, otherMonth)` | Creates one calendar cell |
+| `loadCalendar()` | Fetches `/api/calendar`, renders grid |
+| `loadAgentRegistry()` | Fetches `/api/agents`, calls `renderAgentRegistry()` |
+| `renderAgentRegistry()` | Builds agent cards with live task counts |
+| `submitRegisterAgent()` | POSTs to `/api/agents`, adds card to grid |
 | `loadAgents()` | Fetches `/api/agent-updates`, calls `renderAgentFeed()` |
-| `renderAgentFeed()` | Builds the feed list from `agentEntries` |
-| `startPolling()` | Sets 10-second interval for `loadTasks()` + `loadAgents()` |
-| `toast(msg, type)` | Shows a bottom-right notification |
-| `api(method, path, body)` | Central fetch wrapper with JSON parsing and error throwing |
+| `startPolling()` | 10-second interval for tasks + agents + registry |
+| `api(method, path, body)` | Central fetch wrapper |
+| `toast(msg, type)` | Bottom-right notification |
 
-**Drag and drop flow:**
-1. `dragstart` on a card → sets `draggingId`, adds `.dragging` class (reduces opacity)
-2. `dragover` on a column body → calls `e.preventDefault()`, adds `.drag-over` highlight
-3. `dragleave` → removes highlight
-4. `drop` on a column body → reads `draggingId`, does optimistic local update → renders → calls `PATCH /api/tasks/:id` → on error: reverts via `loadTasks()`
-
-**Polling:**
-- Tasks + agent feed: every 10 seconds
-- Server status check: every 30 seconds
+**Polling interval:** 10 seconds (tasks, agent feed, agent registry)  
+**Status check interval:** 30 seconds
 
 ---
 
-## Error Handling
+## Deployment
 
-| Scenario | Behavior |
-|----------|---------|
-| API request fails | Toast with red border + error message |
-| Drag-and-drop save fails | Local state reverted via full `loadTasks()` reload |
-| Server offline | Status pill shows red OFFLINE, operations still attempted |
-| Invalid POST body | 400 response with `{ ok: false, error: "..." }` |
-| Task/entry not found | 404 response |
-| Path traversal attempt | 403 response |
-| Body > 2MB | Request rejected with error |
+### Local
+```bash
+# 1. Set MONGODB_URI in .env
+# 2. Run local Vercel dev server
+npx vercel dev
+# → http://localhost:3000
+```
+
+### Production (Vercel)
+```bash
+npx vercel --prod
+```
+
+Or push to the connected GitHub repo — Vercel auto-deploys on every push to `main`.
+
+**Environment variables to set in Vercel Dashboard:**
+- `MONGODB_URI` — your Atlas connection string
+- `AGENT_API_KEY` — (optional) API key for agent endpoint security
+
+> **Note:** MongoDB Atlas free tier (M0) is sufficient for this project. Make sure your Atlas cluster's Network Access allows connections from `0.0.0.0/0` (anywhere) for Vercel's dynamic IPs.

@@ -973,6 +973,144 @@
       letter-spacing: 0.5px;
     }
 
+    /* ── Agent Registry ─────────────────────────────────────────── */
+    .agent-registry-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+      gap: 16px;
+      margin-bottom: 32px;
+    }
+
+    .agent-card {
+      background: var(--bg-2);
+      border: 1px solid var(--border);
+      border-radius: var(--r-lg);
+      padding: 20px;
+      position: relative;
+      transition: border-color 0.2s;
+    }
+
+    .agent-card:hover {
+      border-color: var(--amber);
+    }
+
+    .agent-card.agent-orchestrator {
+      border-left: 3px solid var(--amber);
+    }
+
+    .agent-card.agent-primary {
+      border-left: 3px solid var(--blue);
+    }
+
+    .agent-card.agent-sub {
+      border-left: 3px solid var(--text-3);
+    }
+
+    .agent-card-header {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      margin-bottom: 10px;
+    }
+
+    .agent-name {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--text-1);
+      letter-spacing: 0.3px;
+    }
+
+    .agent-role-badge {
+      font-family: var(--font-mono);
+      font-size: 8px;
+      padding: 2px 7px;
+      border-radius: 2px;
+      letter-spacing: 0.5px;
+      text-transform: uppercase;
+    }
+
+    .role-orchestrator {
+      background: rgba(251, 191, 36, 0.15);
+      color: var(--amber);
+    }
+
+    .role-primary {
+      background: rgba(96, 165, 250, 0.15);
+      color: var(--blue);
+    }
+
+    .role-sub-agent {
+      background: var(--bg-3);
+      color: var(--text-3);
+    }
+
+    .agent-desc {
+      font-size: 11px;
+      color: var(--text-2);
+      line-height: 1.6;
+      margin-bottom: 14px;
+      min-height: 18px;
+    }
+
+    .agent-card-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-top: 1px solid var(--border);
+      padding-top: 12px;
+    }
+
+    .agent-task-count {
+      font-family: var(--font-mono);
+      font-size: 10px;
+      color: var(--text-2);
+    }
+
+    .agent-task-count span {
+      color: var(--amber);
+      font-weight: 700;
+    }
+
+    .agent-last-seen {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      color: var(--text-3);
+    }
+
+    .agent-delete-btn {
+      position: absolute;
+      top: 10px;
+      right: 10px;
+      background: none;
+      border: none;
+      color: var(--text-3);
+      cursor: pointer;
+      font-size: 11px;
+      opacity: 0;
+      transition: opacity 0.15s, color 0.15s;
+      padding: 2px 5px;
+    }
+
+    .agent-card:hover .agent-delete-btn {
+      opacity: 1;
+    }
+
+    .agent-delete-btn:hover {
+      color: var(--red);
+    }
+
+    .agent-section-label {
+      font-family: var(--font-mono);
+      font-size: 9px;
+      letter-spacing: 1px;
+      color: var(--text-3);
+      text-transform: uppercase;
+      margin-bottom: 14px;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+
     /* API Contract panel */
     .api-panel {
       background: var(--bg-1);
@@ -1435,14 +1573,21 @@
       <div class="page-head">
         <div>
           <div class="page-title">AI AGENTS</div>
-          <div class="page-subtitle">LIVE ACTIVITY FEED · POLLS EVERY 10 SECONDS</div>
+          <div class="page-subtitle">AGENT REGISTRY · LIVE ACTIVITY FEED</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;">
           <span style="font-family:var(--font-mono);font-size:10px;color:var(--text-3);" id="agent-last-poll">—</span>
-          <button class="btn btn-sm" onclick="loadAgents()">↻ REFRESH</button>
+          <button class="btn btn-sm" onclick="loadAgentRegistry();loadAgents();">↻ REFRESH</button>
+          <button class="btn btn-primary btn-sm" onclick="openRegisterAgentModal()">+ REGISTER AGENT</button>
         </div>
       </div>
 
+      <!-- Registry Grid -->
+      <div class="agent-section-label">REGISTERED AGENTS</div>
+      <div class="agent-registry-grid" id="agent-registry"></div>
+
+      <!-- Activity Log -->
+      <div class="agent-section-label">ACTIVITY LOG</div>
       <div class="agent-layout">
         <div>
           <div class="feed-list" id="agent-feed"></div>
@@ -1455,50 +1600,42 @@
           <div class="api-block">
             <div class="api-method-path">
               <span class="api-method method-post">POST</span>
-              <span class="api-path">/api/agent-update</span>
+              <span class="api-path">/api/agents</span>
             </div>
-            <div class="api-code">curl -X POST /api/agent-update \
+            <div class="api-code">// Self-register (idempotent)
+              curl -X POST /api/agents \
               -H "Content-Type: application/json" \
               -d '{
-              "message": "Completed analysis",
-              "source": "strategy-agent",
-              "tasks": [{
-              "title": "Follow up with client",
-              "column": "todo",
-              "priority": "high",
-              "dueDate": "2026-03-01"
-              }],
-              "calendar": [{
-              "date": "2026-03-01",
-              "title": "Client deadline",
-              "type": "milestone"
-              }]
+              "name": "SPARC",
+              "role": "orchestrator",
+              "description": "Boss agent"
+              }'</div>
+          </div>
+
+          <div class="api-block">
+            <div class="api-method-path">
+              <span class="api-method method-post">POST</span>
+              <span class="api-path">/api/agent-update</span>
+            </div>
+            <div class="api-code">// Push tasks + calendar
+              curl -X POST /api/agent-update \
+              -d '{
+              "source": "SPARC",
+              "message": "Assigned work to sub-agents",
+              "tasks": [{"title": "Research", "column": "todo",
+              "assignee": "open-claw"}]
               }'</div>
           </div>
 
           <div class="api-block">
             <div class="api-method-path">
               <span class="api-method method-get">GET</span>
-              <span class="api-path">/api/tasks</span>
+              <span class="api-path">/api/agents</span>
             </div>
-            <div class="api-code">GET /api/tasks
-              GET /api/calendar
+            <div class="api-code">GET /api/agents
               GET /api/agent-updates
-              GET /api/status</div>
-          </div>
-
-          <div class="api-block">
-            <div class="api-method-path">
-              <span class="api-method method-post">PATCH</span>
-              <span class="api-path">/api/tasks/:id</span>
-            </div>
-            <div class="api-code">// Move task to Done
-              PATCH /api/tasks/:id
-              { "column": "done" }
-
-              // Update priority
-              PATCH /api/tasks/:id
-              { "priority": "high" }</div>
+              PATCH /api/agents/:id
+              DELETE /api/agents/:id</div>
           </div>
         </div>
       </div>
@@ -1681,6 +1818,39 @@
       <div style="display:flex;gap:8px;">
         <button class="btn btn-sm" onclick="closeTaskDrawer()">CANCEL</button>
         <button class="btn btn-primary btn-sm" onclick="saveTaskEdit()">SAVE CHANGES</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Register Agent Modal -->
+  <div class="modal-overlay" id="modal-agent">
+    <div class="modal">
+      <div class="modal-title">REGISTER AGENT</div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">AGENT NAME *</label>
+          <input type="text" id="agent-name" placeholder="e.g. SPARC, open-claw, research-agent" maxlength="80">
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">ROLE</label>
+          <select id="agent-role">
+            <option value="orchestrator">Orchestrator (Boss)</option>
+            <option value="primary">Primary Agent</option>
+            <option value="sub-agent" selected>Sub-Agent</option>
+          </select>
+        </div>
+      </div>
+      <div class="form-row">
+        <div>
+          <label class="form-label">DESCRIPTION</label>
+          <textarea id="agent-desc-input" rows="2" placeholder="What does this agent do?" maxlength="300"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn" onclick="closeModal('modal-agent')">CANCEL</button>
+        <button class="btn btn-primary" onclick="submitRegisterAgent()">REGISTER</button>
       </div>
     </div>
   </div>
@@ -2182,7 +2352,101 @@
     }
 
     // ═════════════════════════════════════════════════════════════
-    //  AI AGENTS FEED
+    //  AGENT REGISTRY
+    // ═════════════════════════════════════════════════════════════
+
+    let agentRegistry = [];
+
+    async function loadAgentRegistry() {
+      try {
+        const data = await api('GET', '/api/agents');
+        agentRegistry = data.agents || [];
+        renderAgentRegistry();
+        document.getElementById('nav-badge-agents').textContent = agentRegistry.length || agentEntries.length;
+      } catch (e) { /* silent */ }
+    }
+
+    function renderAgentRegistry() {
+      const grid = document.getElementById('agent-registry');
+      if (!agentRegistry.length) {
+        grid.innerHTML = `<div class="feed-empty" style="padding:30px 20px;">
+          NO AGENTS REGISTERED YET<br>
+          CLICK "+ REGISTER AGENT" OR CALL POST /api/agents
+        </div>`;
+        return;
+      }
+
+      grid.innerHTML = '';
+      agentRegistry.forEach(agent => {
+        const assignedCount = tasks.filter(t =>
+          t.assignee && t.assignee.toLowerCase() === agent.name.toLowerCase()
+        ).length;
+
+        const roleClass = agent.role === 'orchestrator' ? 'agent-orchestrator'
+          : agent.role === 'primary' ? 'agent-primary' : 'agent-sub';
+        const roleBadgeClass = agent.role === 'orchestrator' ? 'role-orchestrator'
+          : agent.role === 'primary' ? 'role-primary' : 'role-sub-agent';
+
+        const card = document.createElement('div');
+        card.className = `agent-card ${roleClass}`;
+        card.innerHTML = `
+          <button class="agent-delete-btn" title="Remove agent"
+            onclick="event.stopPropagation();deleteAgent('${agent.id}')">✕</button>
+          <div class="agent-card-header">
+            <div class="agent-name">${escHtml(agent.name)}</div>
+            <span class="agent-role-badge ${roleBadgeClass}">${agent.role}</span>
+          </div>
+          <div class="agent-desc">${escHtml(agent.description || 'No description')}</div>
+          <div class="agent-card-footer">
+            <div class="agent-task-count">TASKS ASSIGNED <span>${assignedCount}</span></div>
+            <div class="agent-last-seen">${relTime(agent.lastSeen)}</div>
+          </div>`;
+        grid.appendChild(card);
+      });
+    }
+
+    function openRegisterAgentModal() {
+      document.getElementById('agent-name').value = '';
+      document.getElementById('agent-role').value = 'sub-agent';
+      document.getElementById('agent-desc-input').value = '';
+      openModal('modal-agent');
+      setTimeout(() => document.getElementById('agent-name').focus(), 100);
+    }
+
+    async function submitRegisterAgent() {
+      const name = document.getElementById('agent-name').value.trim();
+      if (!name) { toast('Agent name is required', 'err'); return; }
+      try {
+        const data = await api('POST', '/api/agents', {
+          name,
+          role: document.getElementById('agent-role').value,
+          description: document.getElementById('agent-desc-input').value.trim(),
+        });
+        if (!agentRegistry.find(a => a.id === data.agent.id)) {
+          agentRegistry.push(data.agent);
+        }
+        renderAgentRegistry();
+        closeModal('modal-agent');
+        toast(data.alreadyExists ? `${name} already registered — updated` : `${name} registered`);
+      } catch (e) {
+        toast('Failed: ' + e.message, 'err');
+      }
+    }
+
+    async function deleteAgent(id) {
+      if (!confirm('Remove this agent from the registry?')) return;
+      try {
+        await api('DELETE', `/api/agents/${id}`);
+        agentRegistry = agentRegistry.filter(a => a.id !== id);
+        renderAgentRegistry();
+        toast('Agent removed');
+      } catch (e) {
+        toast('Failed: ' + e.message, 'err');
+      }
+    }
+
+    // ═════════════════════════════════════════════════════════════
+    //  AI AGENTS ACTIVITY FEED
     // ═════════════════════════════════════════════════════════════
 
     async function loadAgents() {
@@ -2190,12 +2454,9 @@
         const data = await api('GET', '/api/agent-updates?limit=50');
         agentEntries = data.entries || [];
         renderAgentFeed();
-        document.getElementById('nav-badge-agents').textContent = agentEntries.length;
         document.getElementById('agent-last-poll').textContent =
           'LAST POLL: ' + new Date().toLocaleTimeString('en-US', { hour12: false });
-      } catch (e) {
-        // silent on poll fail
-      }
+      } catch (e) { /* silent on poll fail */ }
     }
 
     function renderAgentFeed() {
@@ -2203,9 +2464,8 @@
 
       if (!agentEntries.length) {
         feed.innerHTML = `<div class="feed-empty">
-      NO AGENT ACTIVITY YET<br>
-      PUSH UPDATES VIA POST /api/agent-update
-    </div>`;
+          NO AGENT ACTIVITY YET<br>PUSH UPDATES VIA POST /api/agent-update
+        </div>`;
         return;
       }
 
@@ -2213,21 +2473,18 @@
       agentEntries.forEach(entry => {
         const el = document.createElement('div');
         el.className = 'feed-entry';
-
         const results = entry.results || {};
         const badges = [
           results.tasksCreated ? `<span class="feed-result-badge badge-tasks">${results.tasksCreated} TASK${results.tasksCreated > 1 ? 'S' : ''} CREATED</span>` : '',
           results.calendarCreated ? `<span class="feed-result-badge badge-calendar">${results.calendarCreated} CAL ENTR${results.calendarCreated > 1 ? 'IES' : 'Y'} ADDED</span>` : '',
         ].filter(Boolean).join('');
-
         el.innerHTML = `
-      <div class="feed-entry-head">
-        <span class="feed-source">${escHtml(entry.source)}</span>
-        <span class="feed-time">${relTime(entry.createdAt)}</span>
-      </div>
-      ${entry.message ? `<div class="feed-message">${escHtml(entry.message)}</div>` : ''}
-      ${badges ? `<div class="feed-results">${badges}</div>` : ''}`;
-
+          <div class="feed-entry-head">
+            <span class="feed-source">${escHtml(entry.source)}</span>
+            <span class="feed-time">${relTime(entry.createdAt)}</span>
+          </div>
+          ${entry.message ? `<div class="feed-message">${escHtml(entry.message)}</div>` : ''}
+          ${badges ? `<div class="feed-results">${badges}</div>` : ''}`;
         feed.appendChild(el);
       });
     }
@@ -2255,13 +2512,14 @@
       setInterval(() => {
         loadTasks();
         loadAgents();
+        loadAgentRegistry();
       }, 10_000);
     }
 
     // ── Init ──────────────────────────────────────────────────────
     async function init() {
       await checkStatus();
-      await Promise.all([loadTasks(), loadCalendar(), loadAgents()]);
+      await Promise.all([loadTasks(), loadCalendar(), loadAgents(), loadAgentRegistry()]);
       startPolling();
       setInterval(checkStatus, 30_000);
     }

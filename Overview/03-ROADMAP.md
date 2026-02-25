@@ -1,6 +1,6 @@
 # Mission Control — Feature Roadmap & What to Add
 
-**Version:** 2.1 (current)  
+**Version:** 2.2 (current)  
 **Purpose:** Everything that could be built next, organized by category with implementation notes.
 
 ---
@@ -19,7 +19,17 @@ Items marked ⚡ are the highest-value additions based on how the system is curr
 ## Category 1 — Kanban Improvements
 
 ### ✅ ~~⚡ 🟢 Edit Tasks In-Place~~ — **DONE (v2.1)**
-Click any task card to open the Task Detail drawer. All fields are editable (title, description, column, priority, due date, assignee). Changes save via `PATCH /api/tasks/:id`. The drawer also shows read-only metadata: Task ID, Source (Manual or agent name), Created/Updated timestamps.
+Click any task card to open the Task Detail drawer. All fields are editable (title, description, column, priority, due date, assignee). Changes save via `PATCH /api/tasks/:id`.
+
+---
+
+### ✅ ~~⚡ 🟡 Backend Migration~~ — **DONE (v2.2)**
+Replaced Express + JSON-file storage with Vercel Serverless Functions (`/api/*.js`) and MongoDB Atlas using the native `mongodb` driver. Full connection caching, production-ready.
+
+---
+
+### ✅ ~~⚡ 🟡 Agent Registry~~ — **DONE (v2.2)**
+Agents tab now has two sections: a **Registry** (card grid of all registered agents with role, description, and live assigned-task count) and the existing **Activity Log**. Agents can self-register via `POST /api/agents` on startup — the call is idempotent. SPARC shows with a gold border as the orchestrator.
 
 ---
 

@@ -1,7 +1,7 @@
 # Mission Control — System Overview
 
-**Version:** 2.1  
-**Stack:** Node.js 20 LTS · Zero external dependencies · Render-deployable  
+**Version:** 2.2  
+**Stack:** Node.js 20 LTS · Vercel Serverless Functions · MongoDB Atlas · Zero framework dependencies  
 **Last updated:** February 2026
 
 ---
