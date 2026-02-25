@@ -1855,6 +1855,53 @@
     </div>
   </div>
 
+  <!-- Agent Detail Drawer -->
+  <div id="agent-drawer-overlay" onclick="closeAgentDrawer()"></div>
+  <div id="agent-drawer"
+    style="position:fixed;top:0;right:-480px;width:440px;height:100vh;background:var(--bg-1);border-left:1px solid var(--border);z-index:1001;transition:right 0.28s cubic-bezier(0.4,0,0.2,1);display:flex;flex-direction:column;overflow:hidden;">
+    <div class="drawer-header">
+      <div class="drawer-title" id="agent-drawer-title">AGENT DETAIL</div>
+      <button class="drawer-close" onclick="closeAgentDrawer()">✕</button>
+    </div>
+    <div class="drawer-body" style="flex:1;overflow-y:auto;">
+      <div id="agent-drawer-badges" style="display:flex;gap:6px;margin-bottom:16px;flex-wrap:wrap;"></div>
+
+      <label class="drawer-meta-label">DESCRIPTION</label>
+      <textarea id="agent-drawer-desc" rows="3" maxlength="300"
+        style="width:100%;box-sizing:border-box;background:var(--bg-3);border:1px solid var(--border);border-radius:var(--r-sm);color:var(--text-1);font-family:var(--font-sans);font-size:13px;padding:10px;resize:vertical;margin-bottom:16px;"
+        placeholder="What does this agent do?"></textarea>
+
+      <div class="drawer-info-grid" style="margin-bottom:20px;">
+        <div class="drawer-info-item">
+          <span class="drawer-meta-label">ROLE</span>
+          <span class="drawer-info-value" id="agent-drawer-role-val">—</span>
+        </div>
+        <div class="drawer-info-item">
+          <span class="drawer-meta-label">STATUS</span>
+          <span class="drawer-info-value" id="agent-drawer-status">—</span>
+        </div>
+        <div class="drawer-info-item">
+          <span class="drawer-meta-label">REGISTERED</span>
+          <span class="drawer-info-value" id="agent-drawer-created">—</span>
+        </div>
+        <div class="drawer-info-item">
+          <span class="drawer-meta-label">LAST SEEN</span>
+          <span class="drawer-info-value" id="agent-drawer-lastseen">—</span>
+        </div>
+      </div>
+
+      <label class="drawer-meta-label">ASSIGNED TASKS</label>
+      <div id="agent-drawer-tasks" style="margin-top:10px;"></div>
+    </div>
+    <div class="drawer-footer">
+      <button class="btn btn-danger btn-sm" onclick="deleteAgentFromDrawer()">REMOVE AGENT</button>
+      <div style="display:flex;gap:8px;">
+        <button class="btn btn-sm" onclick="closeAgentDrawer()">CANCEL</button>
+        <button class="btn btn-primary btn-sm" onclick="saveAgentEdit()">SAVE DESC</button>
+      </div>
+    </div>
+  </div>
+
   <!-- Toast container -->
   <div id="toast-container"></div>
 
@@ -2401,6 +2448,8 @@
             <div class="agent-task-count">TASKS ASSIGNED <span>${assignedCount}</span></div>
             <div class="agent-last-seen">${relTime(agent.lastSeen)}</div>
           </div>`;
+        card.style.cursor = 'pointer';
+        card.addEventListener('click', () => openAgentDetail(agent));
         grid.appendChild(card);
       });
     }
@@ -2439,6 +2488,90 @@
         await api('DELETE', `/api/agents/${id}`);
         agentRegistry = agentRegistry.filter(a => a.id !== id);
         renderAgentRegistry();
+        toast('Agent removed');
+      } catch (e) {
+        toast('Failed: ' + e.message, 'err');
+      }
+    }
+
+    // ── Agent Detail Drawer ────────────────────────────────────────
+    let viewingAgentId = null;
+
+    function openAgentDetail(agent) {
+      viewingAgentId = agent.id;
+
+      document.getElementById('agent-drawer-title').textContent = agent.name.toUpperCase();
+      document.getElementById('agent-drawer-desc').value = agent.description || '';
+      document.getElementById('agent-drawer-role-val').textContent = agent.role.toUpperCase();
+      document.getElementById('agent-drawer-status').textContent = (agent.status || 'active').toUpperCase();
+      document.getElementById('agent-drawer-created').textContent = agent.createdAt
+        ? new Date(agent.createdAt).toLocaleDateString() : '—';
+      document.getElementById('agent-drawer-lastseen').textContent = relTime(agent.lastSeen);
+
+      // Role badge
+      const roleClass = agent.role === 'orchestrator' ? 'role-orchestrator'
+        : agent.role === 'primary' ? 'role-primary' : 'role-sub-agent';
+      document.getElementById('agent-drawer-badges').innerHTML =
+        `<span class="agent-role-badge ${roleClass}" style="padding:4px 10px;font-size:9px;">${agent.role.toUpperCase()}</span>`;
+
+      // Assigned tasks
+      const assignedTasks = tasks.filter(t =>
+        t.assignee && t.assignee.toLowerCase() === agent.name.toLowerCase()
+      );
+      const tasksEl = document.getElementById('agent-drawer-tasks');
+      if (!assignedTasks.length) {
+        tasksEl.innerHTML = `<div style="color:var(--text-3);font-family:var(--font-mono);font-size:10px;padding:12px 0;">NO TASKS ASSIGNED</div>`;
+      } else {
+        tasksEl.innerHTML = assignedTasks.map(t => {
+          const colColor = t.column === 'done' ? 'var(--green)' : t.column === 'inprogress' ? 'var(--blue)' : 'var(--text-3)';
+          const priColor = t.priority === 'high' ? 'var(--red)' : t.priority === 'medium' ? 'var(--amber)' : 'var(--text-3)';
+          return `<div style="background:var(--bg-2);border:1px solid var(--border);border-radius:var(--r-sm);padding:10px 12px;margin-bottom:8px;">
+            <div style="font-size:13px;color:var(--text-1);margin-bottom:6px;">${escHtml(t.title)}</div>
+            <div style="display:flex;gap:10px;">
+              <span style="font-family:var(--font-mono);font-size:9px;color:${colColor}">${t.column.toUpperCase()}</span>
+              <span style="font-family:var(--font-mono);font-size:9px;color:${priColor}">${t.priority.toUpperCase()}</span>
+              ${t.dueDate ? `<span style="font-family:var(--font-mono);font-size:9px;color:var(--text-3)">DUE ${t.dueDate}</span>` : ''}
+            </div>
+          </div>`;
+        }).join('');
+      }
+
+      // Show drawer + overlay
+      const overlay = document.getElementById('agent-drawer-overlay');
+      const drawer = document.getElementById('agent-drawer');
+      overlay.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,0.4);z-index:1000;';
+      drawer.style.right = '0';
+    }
+
+    function closeAgentDrawer() {
+      viewingAgentId = null;
+      document.getElementById('agent-drawer-overlay').style.cssText = '';
+      document.getElementById('agent-drawer').style.right = '-480px';
+    }
+
+    async function saveAgentEdit() {
+      if (!viewingAgentId) return;
+      const desc = document.getElementById('agent-drawer-desc').value.trim();
+      try {
+        const data = await api('PATCH', `/api/agents/${viewingAgentId}`, { description: desc });
+        const idx = agentRegistry.findIndex(a => a.id === viewingAgentId);
+        if (idx !== -1) agentRegistry[idx] = data.agent;
+        renderAgentRegistry();
+        closeAgentDrawer();
+        toast('Agent updated');
+      } catch (e) {
+        toast('Failed: ' + e.message, 'err');
+      }
+    }
+
+    async function deleteAgentFromDrawer() {
+      if (!viewingAgentId) return;
+      if (!confirm('Remove this agent from the registry?')) return;
+      try {
+        await api('DELETE', `/api/agents/${viewingAgentId}`);
+        agentRegistry = agentRegistry.filter(a => a.id !== viewingAgentId);
+        renderAgentRegistry();
+        closeAgentDrawer();
         toast('Agent removed');
       } catch (e) {
         toast('Failed: ' + e.message, 'err');
